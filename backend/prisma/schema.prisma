@@ -1,0 +1,239 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SALESMAN
+  ADMIN
+  PRODUCTION
+  AUDITOR
+  OWNER
+}
+
+enum ItemType {
+  RAW_MATERIAL
+  PACKAGING
+  FINISHED_GOOD
+}
+
+enum LedgerSourceType {
+  OPENING
+  PURCHASE
+  PRODUCTION_ISSUE
+  PRODUCTION_OUTPUT
+  DISPATCH
+  ADJUSTMENT
+}
+
+enum OrderStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  INVOICED
+  DISPATCHED
+}
+
+enum InvoiceStatus {
+  POSTED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+}
+
+model Item {
+  id                String   @id @default(uuid())
+  sku               String   @unique
+  name              String
+  type              ItemType
+  unit              String   // kg, litre, piece, packet, carton
+  hsnCode           String?
+  gstRateBps        Int      @default(0) // 500 = 5.00%
+  sellingPricePaisa Int      @default(0) // ₹50.00 = 5000 paisa
+  reorderLevel      Decimal? @db.Decimal(14, 4)
+
+  // Finished Good -> Base Recipe link (Two-Tier BOM)
+  recipeId          String?
+  recipe            Recipe?  @relation(fields: [recipeId], references: [id])
+  packWeightG       Int?     // e.g., 200g (makes adding 500g trivial in live interview)
+  pouchItemId       String?
+  cartonItemId      String?
+  packetsPerCarton  Int?     // e.g., 20
+
+  ledgerEntries     StockLedger[]
+  createdAt         DateTime @default(now())
+}
+
+// Tier 1: Base Recipe (Dough / Bulk Mix)
+model Recipe {
+  id           String       @id @default(uuid())
+  name         String       @unique // e.g., "Murukku Bulk Mix"
+  batchYieldG  Int          // e.g., 40000g (200 packets * 200g)
+  lines        RecipeLine[]
+  finishedSkus Item[]
+}
+
+model RecipeLine {
+  id          String  @id @default(uuid())
+  recipeId    String
+  recipe      Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  itemId      String
+  qtyPerBatch Decimal @db.Decimal(14, 4) // 40 kg flour, 10 L oil, 1.2 kg spice
+}
+
+// Immutable Stock Ledger (Single Source of Truth)
+model StockLedger {
+  id            String           @id @default(uuid())
+  itemId        String
+  item          Item             @relation(fields: [itemId], references: [id])
+  qtyDelta      Decimal          @db.Decimal(14, 4) // + for IN, - for OUT
+  unitCostPaisa Decimal          @db.Decimal(14, 4) // Exact WAC (e.g., 4312.5000 paisa = ₹43.125)
+  sourceType    LedgerSourceType
+  sourceId      String           // FK reference to Purchase, ProductionRun, or Dispatch
+  notes         String?
+  createdById   String
+  createdAt     DateTime         @default(now())
+
+  @@index([itemId, createdAt])
+}
+
+model Supplier {
+  id        String     @id @default(uuid())
+  name      String
+  gstin     String?
+  stateCode String     // e.g., "TN"
+  purchases Purchase[]
+}
+
+model Purchase {
+  id           String        @id @default(uuid())
+  supplierId   String
+  supplier     Supplier      @relation(fields: [supplierId], references: [id])
+  invoiceNo    String
+  purchaseDate DateTime      @default(now())
+  totalPaisa   Int
+  lines        PurchaseLine[]
+  createdById  String
+  createdAt    DateTime      @default(now())
+}
+
+model PurchaseLine {
+  id            String   @id @default(uuid())
+  purchaseId    String
+  purchase      Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  itemId        String
+  qty           Decimal  @db.Decimal(14, 4)
+  unitRatePaisa Int
+}
+
+model ProductionRun {
+  id                 String                  @id @default(uuid())
+  runCode            String                  @unique // e.g., RUN-2026-001
+  finishedItemId     String
+  batches            Decimal                 @db.Decimal(10, 2)
+  expectedOutputQty  Int
+  actualOutputQty    Int
+  damagedPouchesQty  Int                     @default(0)
+  cartonsUsedQty     Int                     @default(0)
+  labourCostPaisa    Int                     @default(0)
+  overheadCostPaisa  Int                     @default(0)
+  yieldVariancePct   Decimal                 @db.Decimal(8, 2)
+  isYieldFlagged     Boolean                 @default(false) // true if |variance| > 3%
+  costPerPacketPaisa Int                     @default(0)
+  consumptions       ProductionConsumption[]
+  createdById        String
+  createdAt          DateTime                @default(now())
+}
+
+model ProductionConsumption {
+  id            String        @id @default(uuid())
+  runId         String
+  run           ProductionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  itemId        String
+  plannedQty    Decimal       @db.Decimal(14, 4)
+  actualQty     Decimal       @db.Decimal(14, 4)
+  variancePct   Decimal       @db.Decimal(8, 2)
+  isFlagged     Boolean       @default(false) // true if |variance| > 3%
+  unitCostPaisa Decimal       @db.Decimal(14, 4)
+}
+
+model Customer {
+  id        String  @id @default(uuid())
+  name      String
+  type      String  // RETAILER | DISTRIBUTOR
+  gstin     String?
+  stateCode String  // "TN" (Intra-state CGST+SGST) or "KA" (Inter-state IGST)
+  orders    Order[]
+}
+
+model Order {
+  id         String      @id @default(uuid())
+  orderCode  String      @unique
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  salesmanId String
+  status     OrderStatus @default(SUBMITTED)
+  lines      OrderLine[]
+  invoice    Invoice?
+  createdAt  DateTime    @default(now())
+}
+
+model OrderLine {
+  id             String @id @default(uuid())
+  orderId        String
+  order          Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemId         String
+  qty            Int
+  unitPricePaisa Int
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  invoiceNumber   String        @unique // e.g., INV/2026-27/0001
+  financialYear   String        // "2026-27"
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id])
+  taxablePaisa    Int
+  cgstPaisa       Int           @default(0)
+  sgstPaisa       Int           @default(0)
+  igstPaisa       Int           @default(0)
+  totalPaisa      Int
+  status          InvoiceStatus @default(POSTED)
+  creditNoteForId String?       // Posted invoices are cancelled via credit note, never deleted
+  payments        Payment[]
+  dispatchedAt    DateTime?
+  createdById     String
+  createdAt       DateTime      @default(now())
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  amountPaisa Int
+  mode        String   // UPI, NEFT, CASH, CHEQUE
+  paidAt      DateTime @default(now())
+  recordedBy  String
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  action     String   // CREATE, UPDATE, CANCEL, APPROVE
+  userId     String
+  oldData    Json?
+  newData    Json?
+  createdAt  DateTime @default(now())
+}
