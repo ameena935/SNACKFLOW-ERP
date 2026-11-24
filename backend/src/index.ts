@@ -1,7 +1,11 @@
 import "dotenv/config";
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { prisma } from "./lib/prisma";
+import { authRouter } from "./routes/auth";
+import { purchasesRouter } from "./routes/purchases";
+import { productionRouter } from "./routes/production";
+import { inventoryRouter } from "./routes/inventory";
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -14,26 +18,31 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", ts: new Date().toISOString() });
 });
 
-// ── Routes (to be expanded) ───────────────────────────────────────────────────
-// app.use("/api/auth", authRouter);
-// app.use("/api/items", itemsRouter);
-// app.use("/api/stock", stockRouter);
-// app.use("/api/purchases", purchasesRouter);
-// app.use("/api/production", productionRouter);
-// app.use("/api/orders", ordersRouter);
-// app.use("/api/invoices", invoicesRouter);
+// ── API Routes ────────────────────────────────────────────────────────────────
+app.use("/api/auth", authRouter);
+app.use("/api/purchases", purchasesRouter);
+app.use("/api/production-runs", productionRouter);
+app.use("/api/inventory", inventoryRouter);
 
-// ── Graceful shutdown ─────────────────────────────────────────────────────────
-const server = app.listen(PORT, () => {
-  console.log(`🚀  Backend listening on http://localhost:${PORT}`);
+// ── Global Error Handler ──────────────────────────────────────────────────────
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error" });
 });
 
-process.on("SIGTERM", async () => {
-  console.log("SIGTERM received — shutting down…");
-  server.close(async () => {
-    await prisma.$disconnect();
-    process.exit(0);
+// ── Start server (skip auto-listen during Vitest imports) ─────────────────────
+if (!process.env.VITEST) {
+  const server = app.listen(PORT, () => {
+    console.log(`🚀  Backend listening on http://localhost:${PORT}`);
   });
-});
+
+  process.on("SIGTERM", async () => {
+    console.log("SIGTERM received — shutting down…");
+    server.close(async () => {
+      await prisma.$disconnect();
+      process.exit(0);
+    });
+  });
+}
 
 export { app };

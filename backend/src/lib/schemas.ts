@@ -1,7 +1,7 @@
 /**
  * Zod schemas for shared validation across the backend.
  * All monetary fields validated as non-negative integers (paisa).
- * All qty fields validated as strings (Prisma Decimal-compatible).
+ * All qty fields validated as strings or numbers convertible to Prisma Decimal.
  */
 
 import { z } from "zod";
@@ -14,18 +14,22 @@ export const paisaSchema = z
   .int("Monetary value must be an integer (paisa)")
   .nonnegative("Monetary value must be ≥ 0");
 
-/** Decimal quantity as a string (compatible with Prisma Decimal) */
+/** Decimal quantity as a string or positive number (compatible with Prisma Decimal) */
 export const decimalQtySchema = z
-  .string()
-  .regex(/^\d+(\.\d{1,4})?$/, "Quantity must be a positive decimal with up to 4 decimal places");
+  .union([z.string(), z.number()])
+  .transform((val) => String(val))
+  .refine(
+    (val) => /^\d+(\.\d{1,4})?$/.test(val) && Number(val) > 0,
+    "Quantity must be a positive decimal with up to 4 decimal places"
+  );
 
-/** UUID */
-export const uuidSchema = z.string().uuid();
+/** Non-empty ID (supports both UUIDs and deterministic seed IDs) */
+export const idSchema = z.string().min(1, "ID is required");
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().min(1),
 });
 
 // ── Item ──────────────────────────────────────────────────────────────────────
@@ -42,13 +46,13 @@ export const createItemSchema = z.object({
 
 // ── Purchase ──────────────────────────────────────────────────────────────────
 export const purchaseLineSchema = z.object({
-  itemId: uuidSchema,
+  itemId: idSchema,
   qty: decimalQtySchema,
   unitRatePaisa: paisaSchema,
 });
 
 export const createPurchaseSchema = z.object({
-  supplierId: uuidSchema,
+  supplierId: idSchema,
   invoiceNo: z.string().min(1),
   purchaseDate: z.string().datetime().optional(),
   lines: z.array(purchaseLineSchema).min(1),
@@ -56,36 +60,38 @@ export const createPurchaseSchema = z.object({
 
 // ── Production ────────────────────────────────────────────────────────────────
 export const createProductionRunSchema = z.object({
-  finishedItemId: uuidSchema,
+  finishedItemId: idSchema,
   batches: decimalQtySchema,
   actualOutputQty: z.number().int().positive(),
   damagedPouchesQty: z.number().int().nonnegative().default(0),
   cartonsUsedQty: z.number().int().nonnegative().default(0),
   labourCostPaisa: paisaSchema.default(0),
   overheadCostPaisa: paisaSchema.default(0),
-  consumptions: z.array(
-    z.object({
-      itemId: uuidSchema,
-      actualQty: decimalQtySchema,
-    })
-  ),
+  actualConsumptions: z
+    .array(
+      z.object({
+        itemId: idSchema,
+        actualQty: decimalQtySchema,
+      })
+    )
+    .min(1),
 });
 
 // ── Order ─────────────────────────────────────────────────────────────────────
 export const orderLineSchema = z.object({
-  itemId: uuidSchema,
+  itemId: idSchema,
   qty: z.number().int().positive(),
   unitPricePaisa: paisaSchema,
 });
 
 export const createOrderSchema = z.object({
-  customerId: uuidSchema,
+  customerId: idSchema,
   lines: z.array(orderLineSchema).min(1),
 });
 
 // ── Adjustment ────────────────────────────────────────────────────────────────
 export const stockAdjustmentSchema = z.object({
-  itemId: uuidSchema,
+  itemId: idSchema,
   qtyDelta: z.string().regex(/^-?\d+(\.\d{1,4})?$/, "Delta must be a signed decimal"),
   unitCostPaisa: paisaSchema,
   notes: z.string().min(1),

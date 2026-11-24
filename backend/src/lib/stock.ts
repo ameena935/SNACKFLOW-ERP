@@ -5,15 +5,18 @@
  *       from SUM(qtyDelta) in StockLedger inside a PG transaction.
  */
 
+import { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "./prisma";
 
+type DbClient = Prisma.TransactionClient | typeof prisma;
+
 /**
  * Returns the current on-hand quantity for an item.
- * Uses an aggregate SUM inside the same connection.
+ * Uses an aggregate SUM inside the same connection/transaction.
  */
-export async function getCurrentStock(itemId: string): Promise<Decimal> {
-  const result = await prisma.stockLedger.aggregate({
+export async function getCurrentStock(itemId: string, db: DbClient = prisma): Promise<Decimal> {
+  const result = await db.stockLedger.aggregate({
     where: { itemId },
     _sum: { qtyDelta: true },
   });
@@ -21,31 +24,45 @@ export async function getCurrentStock(itemId: string): Promise<Decimal> {
 }
 
 /**
- * Returns the current Weighted Average Cost (WAC) in paisa for an item.
+ * Returns the current Moving Weighted Average Cost (WAC) in paisa for an item.
  *
- * WAC = Σ(qtyDelta × unitCostPaisa) / Σ(qtyDelta)   [only positive IN rows]
+ * Replays ledger chronologically:
+ * - On IN (qtyDelta > 0): newWAC = (prevQty * prevWAC + qtyDelta * unitCostPaisa) / (prevQty + qtyDelta)
+ * - On OUT (qtyDelta < 0): quantity decreases, WAC stays unchanged
  *
- * Returns 0 if no IN rows exist.
+ * Returns Decimal(0) if no stock / no IN rows exist.
  */
-export async function getCurrentWAC(itemId: string): Promise<Decimal> {
-  // We compute WAC from all inbound (positive) ledger rows.
-  const rows = await prisma.stockLedger.findMany({
-    where: { itemId, qtyDelta: { gt: 0 } },
+export async function getCurrentWAC(itemId: string, db: DbClient = prisma): Promise<Decimal> {
+  const rows = await db.stockLedger.findMany({
+    where: { itemId },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: { qtyDelta: true, unitCostPaisa: true },
   });
 
   if (rows.length === 0) return new Decimal(0);
 
-  let totalValue = new Decimal(0);
-  let totalQty = new Decimal(0);
+  let runningQty = new Decimal(0);
+  let runningWac = new Decimal(0);
 
   for (const row of rows) {
-    totalValue = totalValue.add(row.qtyDelta.mul(row.unitCostPaisa));
-    totalQty = totalQty.add(row.qtyDelta);
+    if (row.qtyDelta.gt(0)) {
+      const newQty = runningQty.add(row.qtyDelta);
+      if (newQty.gt(0)) {
+        const totalValue = runningQty
+          .mul(runningWac)
+          .add(row.qtyDelta.mul(row.unitCostPaisa));
+        runningWac = totalValue.div(newQty).toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
+      }
+      runningQty = newQty;
+    } else {
+      runningQty = runningQty.add(row.qtyDelta);
+      if (runningQty.lte(0)) {
+        runningQty = new Decimal(0);
+      }
+    }
   }
 
-  if (totalQty.isZero()) return new Decimal(0);
-  return totalValue.div(totalQty).toDecimalPlaces(4, Decimal.ROUND_HALF_UP);
+  return runningWac;
 }
 
 /**
@@ -57,10 +74,10 @@ export interface StockPosition {
   wacPaisa: Decimal; // Weighted average cost per unit in paisa (4 decimal places)
 }
 
-export async function getStockPosition(itemId: string): Promise<StockPosition> {
+export async function getStockPosition(itemId: string, db: DbClient = prisma): Promise<StockPosition> {
   const [onHandQty, wacPaisa] = await Promise.all([
-    getCurrentStock(itemId),
-    getCurrentWAC(itemId),
+    getCurrentStock(itemId, db),
+    getCurrentWAC(itemId, db),
   ]);
   return { itemId, onHandQty, wacPaisa };
 }
