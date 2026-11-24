@@ -81,12 +81,35 @@ export const createProductionRunSchema = z.object({
 export const orderLineSchema = z.object({
   itemId: idSchema,
   qty: z.number().int().positive(),
-  unitPricePaisa: paisaSchema,
 });
 
 export const createOrderSchema = z.object({
   customerId: idSchema,
+  clientOrderId: z.string().min(1).optional(),
   lines: z.array(orderLineSchema).min(1),
+});
+
+export const approveOrderSchema = z
+  .object({
+    lines: z
+      .array(
+        z.object({
+          itemId: idSchema,
+          qty: z.number().int().positive(),
+          unitPricePaisa: paisaSchema,
+        })
+      )
+      .min(1)
+      .optional(),
+  })
+  .optional();
+
+// ── Payment ───────────────────────────────────────────────────────────────────
+export const createPaymentSchema = z.object({
+  invoiceId: idSchema,
+  amountPaisa: z.number().int().positive("Payment amount must be > 0 paisa"),
+  mode: z.enum(["UPI", "NEFT", "CASH", "CHEQUE"]),
+  paidAt: z.string().datetime().optional(),
 });
 
 // ── Adjustment ────────────────────────────────────────────────────────────────

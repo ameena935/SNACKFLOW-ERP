@@ -6,6 +6,9 @@ import { authRouter } from "./routes/auth";
 import { purchasesRouter } from "./routes/purchases";
 import { productionRouter } from "./routes/production";
 import { inventoryRouter } from "./routes/inventory";
+import { ordersRouter } from "./routes/orders";
+import { invoicesRouter } from "./routes/invoices";
+import { paymentsRouter } from "./routes/payments";
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -23,6 +26,9 @@ app.use("/api/auth", authRouter);
 app.use("/api/purchases", purchasesRouter);
 app.use("/api/production-runs", productionRouter);
 app.use("/api/inventory", inventoryRouter);
+app.use("/api/orders", ordersRouter);
+app.use("/api/invoices", invoicesRouter);
+app.use("/api/payments", paymentsRouter);
 
 // ── Global Error Handler ──────────────────────────────────────────────────────
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

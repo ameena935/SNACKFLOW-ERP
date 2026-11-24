@@ -202,8 +202,8 @@ model Invoice {
   id              String        @id @default(uuid())
   invoiceNumber   String        @unique // e.g., INV/2026-27/0001
   financialYear   String        // "2026-27"
-  orderId         String        @unique
-  order           Order         @relation(fields: [orderId], references: [id])
+  orderId         String?       @unique
+  order           Order?        @relation(fields: [orderId], references: [id])
   taxablePaisa    Int
   cgstPaisa       Int           @default(0)
   sgstPaisa       Int           @default(0)
