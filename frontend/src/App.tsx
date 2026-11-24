@@ -1,32 +1,55 @@
+import { useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthUser, clearStoredAuth, getStoredUser } from "./lib/auth";
+import { LoginPage } from "./pages/LoginPage";
+import { SalesmanView } from "./pages/SalesmanView";
+import { AdminView } from "./pages/AdminView";
+import { ProductionView } from "./pages/ProductionView";
+import { AuditorView } from "./pages/AuditorView";
+import { OwnerView } from "./pages/OwnerView";
 
-// Placeholder pages – to be implemented in future sprints
-function Dashboard() {
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
-      <h1 className="text-3xl font-bold text-brand-700">🥨 CrispLedger ERP</h1>
-      <p className="text-gray-500 text-sm">Order-to-Audit ERP for South Indian Snack Manufacturing</p>
-      <div className="card mt-6 max-w-md w-full">
-        <h2 className="text-lg font-semibold mb-3">Modules</h2>
-        <ul className="space-y-2 text-sm text-gray-600">
-          <li>📦 Inventory & Stock Ledger</li>
-          <li>🛒 Purchase Management</li>
-          <li>🏭 Production Runs (Two-Tier BOM)</li>
-          <li>📋 Order Management</li>
-          <li>🧾 GST Invoicing (CGST/SGST/IGST)</li>
-          <li>💳 Payment Tracking</li>
-          <li>📊 Audit Log</li>
-        </ul>
-      </div>
-    </div>
-  );
+function RoleWorkspace({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
+  switch (user.role) {
+    case "SALESMAN":
+      return <SalesmanView user={user} onLogout={onLogout} />;
+    case "ADMIN":
+      return <AdminView user={user} onLogout={onLogout} />;
+    case "PRODUCTION":
+      return <ProductionView user={user} onLogout={onLogout} />;
+    case "AUDITOR":
+      return <AuditorView user={user} onLogout={onLogout} />;
+    case "OWNER":
+      return <OwnerView user={user} onLogout={onLogout} />;
+  }
 }
 
 export default function App() {
+  const [user, setUser] = useState<AuthUser | null>(getStoredUser);
+
+  function handleLogout() {
+    clearStoredAuth();
+    setUser(null);
+  }
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route
+          path="/login"
+          element={
+            user ? <Navigate to="/" replace /> : <LoginPage onLogin={(u) => setUser(u)} />
+          }
+        />
+        <Route
+          path="/"
+          element={
+            user ? (
+              <RoleWorkspace user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
