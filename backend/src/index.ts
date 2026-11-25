@@ -22,6 +22,10 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", ts: new Date().toISOString() });
 });
+// Also expose under /api/health so the Vite proxy (/api → :4000) can reach it
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", ts: new Date().toISOString() });
+});
 
 // ── API Routes ────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRouter);
