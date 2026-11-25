@@ -1,6 +1,6 @@
-# CrispLedger — Order-to-Audit Mini-ERP
+# SnackFlow ERP — Order-to-Audit Mini-ERP
 
-**CrispLedger** is an Order-to-Audit Mini-ERP built for a small South Indian snack manufacturer, linking field sales, recipe-driven batch production, GST invoicing, and statutory auditing around a single immutable `StockLedger`. Every stock balance is derived on the fly via `SUM(StockLedger.qtyDelta)` inside PostgreSQL transactions—no mutable `current_stock` column exists anywhere in the schema.
+**SnackFlow ERP** is an Order-to-Audit Mini-ERP built for a small South Indian snack manufacturer, linking field sales, recipe-driven batch production, GST invoicing, and statutory auditing around a single immutable `StockLedger`. Every stock balance is derived on the fly via `SUM(StockLedger.qtyDelta)` inside PostgreSQL transactions—no mutable `current_stock` column exists anywhere in the schema.
 
 ---
 

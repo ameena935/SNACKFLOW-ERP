@@ -51,7 +51,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     <div className="min-h-screen bg-gradient-to-br from-brand-50 to-orange-100 flex items-center justify-center p-4">
       <div className="card max-w-md w-full space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-brand-700">CrispLedger ERP</h1>
+          <h1 className="text-2xl font-bold text-brand-700">SnackFlow ERP</h1>
           <p className="text-sm text-gray-500 mt-1">
             Order-to-Audit ERP for South Indian Snack Manufacturing
           </p>

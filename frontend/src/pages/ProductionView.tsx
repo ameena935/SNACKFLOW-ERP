@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import { AuthUser } from "../lib/auth";
 import { paisaToRupee } from "../lib/money";
 import { Layout } from "../components/Layout";
+import { TraceBatchButton } from "../components/TraceBatchButton";
 
 interface RecipeLine {
   itemId: string;
@@ -405,6 +406,7 @@ export function ProductionView({ user, onLogout }: { user: AuthUser; onLogout: (
                         >
                           Yield {r.yieldVariancePct}% ({r.isYieldFlagged ? t.flagged : t.ok})
                         </span>
+                        <TraceBatchButton runId={r.id} runCode={r.runCode} />
                       </div>
                     </div>
                     <div className="text-xs text-gray-600">

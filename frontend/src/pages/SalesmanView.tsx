@@ -52,7 +52,7 @@ interface OfflineQueuedOrder {
   createdAt: string;
 }
 
-const QUEUE_KEY = "crispledger_pending_orders";
+const QUEUE_KEY = "snackflow_pending_orders";
 const PING_INTERVAL_MS = 5_000;
 
 function loadQueue(): OfflineQueuedOrder[] {

@@ -55,6 +55,112 @@ interface ProductionPlan {
   expectedOutputQty: number;
 }
 
+// ─── Delivery Challan Modal ───────────────────────────────────────────────────
+interface ChallanData {
+  challanNo: string;
+  dispatchDate: string;
+  customerName: string;
+  stateCode: string;
+  product: string;
+  qty: number;
+  invoiceNumber: string;
+}
+
+function DeliveryChallanModal({
+  challan,
+  onClose,
+}: {
+  challan: ChallanData;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full">
+        {/* Screen-only controls */}
+        <div className="flex items-center justify-between p-4 border-b print:hidden">
+          <h3 className="font-semibold text-gray-900">Delivery Challan Preview</h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.print()}
+              className="btn-primary text-xs px-3 py-1.5"
+            >
+              Print Challan
+            </button>
+            <button onClick={onClose} className="btn-secondary text-xs px-3 py-1.5">
+              Close
+            </button>
+          </div>
+        </div>
+
+        {/* Printable content */}
+        <div className="p-6 print:p-0 font-mono text-sm" id="challan-printable">
+          <div className="text-center border-b-2 border-gray-900 pb-3 mb-4">
+            <div className="text-xl font-bold tracking-widest">SnackFlow ERP</div>
+            <div className="text-xs text-gray-500">
+              Plot 42, SIDCO Industrial Estate, Madurai, Tamil Nadu – 625001
+            </div>
+            <div className="text-base font-bold mt-2 uppercase tracking-wider">
+              Delivery Challan
+            </div>
+          </div>
+
+          <table className="w-full text-xs border-collapse mb-4">
+            <tbody>
+              <tr>
+                <td className="py-1 pr-3 font-semibold text-gray-600 w-40">Challan No.</td>
+                <td className="py-1 font-bold">{challan.challanNo}</td>
+              </tr>
+              <tr>
+                <td className="py-1 pr-3 font-semibold text-gray-600">Dispatch Date</td>
+                <td className="py-1">{challan.dispatchDate}</td>
+              </tr>
+              <tr>
+                <td className="py-1 pr-3 font-semibold text-gray-600">Invoice Ref.</td>
+                <td className="py-1">{challan.invoiceNumber}</td>
+              </tr>
+              <tr>
+                <td className="py-1 pr-3 font-semibold text-gray-600">Customer</td>
+                <td className="py-1 font-bold">{challan.customerName}</td>
+              </tr>
+              <tr>
+                <td className="py-1 pr-3 font-semibold text-gray-600">State</td>
+                <td className="py-1">{challan.stateCode}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table className="w-full text-xs border border-gray-400 border-collapse">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border border-gray-400 px-2 py-1.5 text-left">Product</th>
+                <th className="border border-gray-400 px-2 py-1.5 text-right">Dispatched Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-gray-400 px-2 py-1.5">{challan.product}</td>
+                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">
+                  {challan.qty} pkts
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div className="mt-8 flex justify-between text-xs text-gray-500">
+            <div>
+              <div className="border-t border-gray-400 w-32 mt-8 pt-1">Prepared By</div>
+            </div>
+            <div>
+              <div className="border-t border-gray-400 w-32 mt-8 pt-1">Received By</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main AdminView ───────────────────────────────────────────────────────────
 export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stockChecks, setStockChecks] = useState<Record<string, StockCheckResult>>({});
@@ -67,6 +173,8 @@ export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => 
   const [payMode, setPayMode] = useState<"UPI" | "NEFT" | "CASH" | "CHEQUE">("UPI");
   const [planResult, setPlanResult] = useState<{ orderCode: string; plans: ProductionPlan[] } | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  const [challan, setChallan] = useState<ChallanData | null>(null);
+  const [copiedInvId, setCopiedInvId] = useState<string | null>(null);
 
   const loadAll = useCallback(async () => {
     const [ordRes, outRes] = await Promise.all([
@@ -168,8 +276,44 @@ export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => 
     await loadAll();
   }
 
+  function openChallan(order: Order, inv: Order["invoice"]) {
+    if (!inv) return;
+    const qty = order.lines.reduce((s, l) => s + l.qty, 0);
+    const productName = `Order ${order.orderCode} goods`;
+    setChallan({
+      challanNo: `DC-${inv.invoiceNumber.replace(/\//g, "-")}`,
+      dispatchDate: inv.dispatchedAt
+        ? new Date(inv.dispatchedAt).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
+      customerName: order.customer.name,
+      stateCode: order.customer.stateCode,
+      product: productName,
+      qty,
+      invoiceNumber: inv.invoiceNumber,
+    });
+  }
+
+  function handleCopyWhatsApp(inv: Order["invoice"], customerName: string) {
+    if (!inv) return;
+    const msg =
+      `*SnackFlow ERP* 🏭\n` +
+      `Invoice No: ${inv.invoiceNumber}\n` +
+      `Customer: ${customerName}\n` +
+      `Total: ${paisaToRupee(inv.totalPaisa)}\n` +
+      `Status: ${inv.status}${inv.dispatchedAt ? " · Dispatched" : ""}`;
+
+    void navigator.clipboard.writeText(msg).then(() => {
+      setCopiedInvId(inv.id);
+      setTimeout(() => setCopiedInvId(null), 2000);
+    });
+  }
+
   return (
     <Layout user={user} onLogout={onLogout} title="Factory Admin Operations">
+      {challan && (
+        <DeliveryChallanModal challan={challan} onClose={() => setChallan(null)} />
+      )}
+
       <div className="space-y-6">
         {banner && (
           <div className="p-3 rounded-md bg-brand-50 border border-brand-200 text-brand-900 text-sm flex justify-between items-center">
@@ -224,13 +368,6 @@ export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => 
                   const val = o.lines.reduce((s, l) => s + l.qty * l.unitPricePaisa, 0);
                   const sc = stockChecks[o.id];
                   const inv = o.invoice;
-                  const waText = inv
-                    ? encodeURIComponent(
-                        `Tax Invoice ${inv.invoiceNumber} for ${o.customer.name}: Total ${paisaToRupee(
-                          inv.totalPaisa
-                        )} (GST included).`
-                      )
-                    : "";
 
                   return (
                     <tr key={o.id} className="hover:bg-gray-50">
@@ -347,20 +484,33 @@ export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => 
                               >
                                 PDF
                               </button>
-                              <a
-                                href={`https://wa.me/?text=${waText}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="btn-secondary text-xs px-2.5 py-1 text-green-700"
+                              {/* Copy WhatsApp Summary */}
+                              <button
+                                onClick={() => handleCopyWhatsApp(inv, o.customer.name)}
+                                className={`text-xs px-2.5 py-1 rounded border font-medium transition-colors ${
+                                  copiedInvId === inv.id
+                                    ? "bg-green-100 text-green-800 border-green-300"
+                                    : "btn-secondary text-green-700"
+                                }`}
+                                title="Copy WhatsApp Summary"
                               >
-                                WhatsApp
-                              </a>
+                                {copiedInvId === inv.id ? "✓ Copied!" : "📋 WA Summary"}
+                              </button>
                               {inv.status === "POSTED" && !inv.dispatchedAt && (
                                 <button
                                   onClick={() => void handleDispatch(inv.id, inv.invoiceNumber)}
                                   className="btn-primary text-xs px-2.5 py-1"
                                 >
                                   Dispatch
+                                </button>
+                              )}
+                              {/* Delivery Challan — only shown after dispatch */}
+                              {inv.dispatchedAt && (
+                                <button
+                                  onClick={() => openChallan(o, inv)}
+                                  className="btn-secondary text-xs px-2.5 py-1 text-indigo-700"
+                                >
+                                  Delivery Challan
                                 </button>
                               )}
                               {inv.status === "POSTED" && (
@@ -435,6 +585,7 @@ export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => 
                   <th className="px-3 py-2">0-30d</th>
                   <th className="px-3 py-2">31-60d</th>
                   <th className="px-3 py-2">60+d</th>
+                  <th className="px-3 py-2">WA Summary</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -449,6 +600,9 @@ export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => 
                     <td className="px-3 py-2">{paisaToRupee(c.ageing["0-30"])}</td>
                     <td className="px-3 py-2">{paisaToRupee(c.ageing["31-60"])}</td>
                     <td className="px-3 py-2">{paisaToRupee(c.ageing["60+"])}</td>
+                    <td className="px-3 py-2">
+                      <OutstandingWACopyButton customer={c} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -457,5 +611,37 @@ export function AdminView({ user, onLogout }: { user: AuthUser; onLogout: () => 
         </div>
       </div>
     </Layout>
+  );
+}
+
+// ─── WhatsApp Summary Copy button for the Outstanding table ──────────────────
+function OutstandingWACopyButton({ customer }: { customer: OutstandingCustomer }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    const msg =
+      `*SnackFlow ERP* 🏭\n` +
+      `Customer: ${customer.customerName} (${customer.stateCode})\n` +
+      `Total Invoiced: ${paisaToRupee(customer.totalInvoicedPaisa)}\n` +
+      `Paid: ${paisaToRupee(customer.totalPaidPaisa)}\n` +
+      `Balance Due: ${paisaToRupee(customer.outstandingPaisa)}`;
+
+    void navigator.clipboard.writeText(msg).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`text-xs px-2 py-1 rounded border font-medium transition-colors ${
+        copied
+          ? "bg-green-100 text-green-800 border-green-300"
+          : "bg-white text-green-700 border-green-300 hover:bg-green-50"
+      }`}
+    >
+      {copied ? "✓ Copied!" : "📋 Copy WA"}
+    </button>
   );
 }

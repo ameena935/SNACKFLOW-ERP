@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { AuthUser } from "../lib/auth";
 import { Layout } from "../components/Layout";
+import { TraceBatchButton } from "../components/TraceBatchButton";
 
 const REPORT_TABS = [
   { id: "sales-register", label: "Sales Register" },
@@ -34,6 +35,21 @@ export function AuditorView({ user, onLogout }: { user: AuthUser; onLogout: () =
   const [title, setTitle] = useState("");
   const [integrity, setIntegrity] = useState<IntegrityResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [runIdByCode, setRunIdByCode] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    void api
+      .get("/production-runs")
+      .then((res) => {
+        const runs = (res.data as { runs: Array<{ id: string; runCode: string }> }).runs;
+        const map: Record<string, string> = {};
+        for (const r of runs) {
+          map[r.runCode] = r.id;
+        }
+        setRunIdByCode(map);
+      })
+      .catch(() => setRunIdByCode({}));
+  }, []);
 
   const buildQuery = useCallback(
     (format: string) => {
@@ -199,18 +215,32 @@ export function AuditorView({ user, onLogout }: { user: AuthUser; onLogout: () =
                         {col}
                       </th>
                     ))}
+                    {activeTab === "production" && <th className="px-3 py-2">Traceability</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {rows.map((row, rIdx) => (
-                    <tr key={rIdx} className="hover:bg-gray-50">
-                      {columns.map((col) => (
-                        <td key={col} className="px-3 py-2 whitespace-nowrap text-gray-800">
-                          {String(row[col] ?? "")}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {rows.map((row, rIdx) => {
+                    const runCode = String(row["runCode"] ?? "");
+                    const runId = runIdByCode[runCode];
+                    return (
+                      <tr key={rIdx} className="hover:bg-gray-50">
+                        {columns.map((col) => (
+                          <td key={col} className="px-3 py-2 whitespace-nowrap text-gray-800">
+                            {String(row[col] ?? "")}
+                          </td>
+                        ))}
+                        {activeTab === "production" && (
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {runId ? (
+                              <TraceBatchButton runId={runId} runCode={runCode} />
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

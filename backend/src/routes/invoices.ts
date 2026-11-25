@@ -12,7 +12,7 @@ export const invoicesRouter = Router();
 invoicesRouter.use(authenticate);
 
 const FACTORY_STATE_CODE = "TN";
-const FACTORY_NAME = "CrispLedger Foods Pvt. Ltd.";
+const FACTORY_NAME = "SnackFlow Foods Pvt. Ltd.";
 const FACTORY_GSTIN = "33AAACC1234F1Z5";
 const FACTORY_ADDRESS = "Plot 42, SIDCO Industrial Estate, Madurai, Tamil Nadu - 625001";
 

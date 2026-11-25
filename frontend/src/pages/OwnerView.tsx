@@ -32,6 +32,43 @@ interface OwnerSummary {
   totalOutstandingPaisa: number;
 }
 
+// ─── Tiny SVG bar chart ────────────────────────────────────────────────────────
+interface BarChartProps {
+  bars: Array<{ label: string; value: number; color: string }>;
+  formatValue?: (v: number) => string;
+  title: string;
+}
+
+function MiniBarChart({ bars, formatValue, title }: BarChartProps) {
+  const max = Math.max(...bars.map((b) => b.value), 1);
+  const fmt = formatValue ?? ((v) => String(v));
+
+  return (
+    <div className="card">
+      <h2 className="text-lg font-semibold mb-4">{title}</h2>
+      <div className="space-y-3">
+        {bars.map((bar) => {
+          const pct = Math.max((bar.value / max) * 100, 0);
+          return (
+            <div key={bar.label}>
+              <div className="flex justify-between text-xs text-gray-600 mb-1">
+                <span className="font-medium">{bar.label}</span>
+                <span className="font-semibold">{fmt(bar.value)}</span>
+              </div>
+              <div className="h-5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, backgroundColor: bar.color }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function OwnerView({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [data, setData] = useState<OwnerSummary | null>(null);
 
@@ -46,6 +83,30 @@ export function OwnerView({ user, onLogout }: { user: AuthUser; onLogout: () => 
       </Layout>
     );
   }
+
+  // ── Inventory breakdown by type ───────────────────────────────────────────
+  const typeGroups: Record<string, number> = {};
+  for (const s of data.stockLevels) {
+    const qty = Math.max(parseFloat(s.closingQty) || 0, 0);
+    typeGroups[s.type] = (typeGroups[s.type] ?? 0) + qty;
+  }
+
+  const TYPE_COLORS: Record<string, string> = {
+    RAW_MATERIAL: "#f97316",
+    PACKAGING: "#3b82f6",
+    FINISHED_GOOD: "#10b981",
+  };
+  const TYPE_LABELS: Record<string, string> = {
+    RAW_MATERIAL: "Raw Materials",
+    PACKAGING: "Packaging",
+    FINISHED_GOOD: "Finished Goods",
+  };
+
+  const inventoryBars = Object.entries(typeGroups).map(([type, qty]) => ({
+    label: TYPE_LABELS[type] ?? type,
+    value: qty,
+    color: TYPE_COLORS[type] ?? "#6b7280",
+  }));
 
   return (
     <Layout user={user} onLogout={onLogout} title="Owner Executive Dashboard">
@@ -94,6 +155,26 @@ export function OwnerView({ user, onLogout }: { user: AuthUser; onLogout: () => 
             </div>
             <div className="text-xs text-gray-500 mt-1">Runs with &gt; 3% variance</div>
           </div>
+        </div>
+
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Chart 1: Inventory / Stock Breakdown */}
+          {inventoryBars.length > 0 ? (
+            <MiniBarChart
+              title="Inventory / Stock Breakdown (Units)"
+              bars={inventoryBars}
+              formatValue={(v) => `${v.toFixed(1)} units`}
+            />
+          ) : (
+            <div className="card">
+              <h2 className="text-lg font-semibold mb-4">Inventory / Stock Breakdown</h2>
+              <p className="text-sm text-gray-500">No stock data available.</p>
+            </div>
+          )}
+
+          {/* Chart 2: Receivables Overview */}
+          <ReceivablesChart totalOutstandingPaisa={data.totalOutstandingPaisa} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -151,5 +232,62 @@ export function OwnerView({ user, onLogout }: { user: AuthUser; onLogout: () => 
         </div>
       </div>
     </Layout>
+  );
+}
+
+// ─── Receivables chart — fetches /payments/outstanding for real data ──────────
+interface OutstandingCustomer {
+  customerId: string;
+  customerName: string;
+  totalInvoicedPaisa: number;
+  totalPaidPaisa: number;
+  outstandingPaisa: number;
+}
+
+function ReceivablesChart({ totalOutstandingPaisa }: { totalOutstandingPaisa: number }) {
+  const [customers, setCustomers] = useState<OutstandingCustomer[]>([]);
+
+  useEffect(() => {
+    void api
+      .get("/payments/outstanding")
+      .then((res) => setCustomers((res.data as { customers: OutstandingCustomer[] }).customers))
+      .catch(() => setCustomers([]));
+  }, []);
+
+  const totalInvoiced = customers.reduce((s, c) => s + c.totalInvoicedPaisa, 0);
+  const totalPaid = customers.reduce((s, c) => s + c.totalPaidPaisa, 0);
+  const outstanding = totalOutstandingPaisa;
+
+  const bars = [
+    { label: "Total Invoiced", value: totalInvoiced, color: "#6366f1" },
+    { label: "Collected", value: totalPaid, color: "#10b981" },
+    { label: "Outstanding", value: outstanding, color: "#f43f5e" },
+  ];
+
+  const max = Math.max(...bars.map((b) => b.value), 1);
+
+  return (
+    <div className="card">
+      <h2 className="text-lg font-semibold mb-4">Receivables Overview</h2>
+      <div className="space-y-3">
+        {bars.map((bar) => {
+          const pct = Math.max((bar.value / max) * 100, 0);
+          return (
+            <div key={bar.label}>
+              <div className="flex justify-between text-xs text-gray-600 mb-1">
+                <span className="font-medium">{bar.label}</span>
+                <span className="font-semibold">{paisaToRupee(bar.value)}</span>
+              </div>
+              <div className="h-5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%`, backgroundColor: bar.color }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

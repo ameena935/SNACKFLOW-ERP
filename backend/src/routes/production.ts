@@ -331,3 +331,124 @@ productionRouter.get(
     res.json({ runs });
   }
 );
+
+/**
+ * GET /api/production-runs/:id/trace
+ * FSSAI Batch-to-Customer Traceability (read-only, zero schema changes)
+ * Allowed roles: PRODUCTION, ADMIN, AUDITOR, OWNER
+ */
+productionRouter.get(
+  "/:id/trace",
+  requireRole("PRODUCTION", "ADMIN", "AUDITOR", "OWNER"),
+  async (req: Request, res: Response) => {
+    const runId = String(req.params.id);
+
+    const run = await prisma.productionRun.findUnique({
+      where: { id: runId },
+      include: { consumptions: true },
+    });
+
+    if (!run) {
+      res.status(404).json({ error: `Production run not found: ${runId}` });
+      return;
+    }
+
+    // Get all items for name lookups
+    const items = await prisma.item.findMany();
+    const itemMap = new Map(items.map((i) => [i.id, i]));
+
+    // 1. Raw material purchases: find purchases that happened before the run date
+    //    and contributed items used in this run
+    const usedItemIds = run.consumptions.map((c) => c.itemId);
+    const purchases = await prisma.purchase.findMany({
+      where: {
+        purchaseDate: { lte: run.createdAt },
+        lines: { some: { itemId: { in: usedItemIds } } },
+      },
+      include: { supplier: true, lines: { where: { itemId: { in: usedItemIds } } } },
+      orderBy: { purchaseDate: "desc" },
+      take: 10,
+    });
+
+    const rawMaterialPurchases = purchases.flatMap((p) =>
+      p.lines.map((l) => ({
+        supplierName: p.supplier.name,
+        supplierState: p.supplier.stateCode,
+        lotNo: p.invoiceNo,
+        purchaseDate: p.purchaseDate.toISOString().slice(0, 10),
+        itemName: itemMap.get(l.itemId)?.name ?? l.itemId,
+        qty: l.qty.toString(),
+        unit: itemMap.get(l.itemId)?.unit ?? "",
+      }))
+    );
+
+    // 2. Production batch details
+    const finishedItem = itemMap.get(run.finishedItemId);
+    const batch = {
+      runCode: run.runCode,
+      runDate: run.createdAt.toISOString().slice(0, 10),
+      finishedItemName: finishedItem?.name ?? run.finishedItemId,
+      batches: run.batches.toString(),
+      expectedOutputQty: run.expectedOutputQty,
+      actualOutputQty: run.actualOutputQty,
+      yieldVariancePct: run.yieldVariancePct.toString(),
+      isYieldFlagged: run.isYieldFlagged,
+      costPerPacketPaisa: run.costPerPacketPaisa,
+      consumptions: run.consumptions.map((c) => ({
+        itemName: itemMap.get(c.itemId)?.name ?? c.itemId,
+        plannedQty: c.plannedQty.toString(),
+        actualQty: c.actualQty.toString(),
+        variancePct: c.variancePct.toString(),
+        isFlagged: c.isFlagged,
+      })),
+    };
+
+    // 3. Dispatched customers: find invoices for the finished item that were dispatched
+    //    after (or on) the production run date — these are the likely customers for this batch
+    const dispatchedInvoices = await prisma.invoice.findMany({
+      where: {
+        status: "POSTED",
+        dispatchedAt: { not: null, gte: run.createdAt },
+        creditNoteForId: null,
+        order: {
+          lines: { some: { itemId: run.finishedItemId } },
+        },
+      },
+      include: {
+        order: {
+          include: {
+            customer: true,
+            lines: { where: { itemId: run.finishedItemId } },
+          },
+        },
+        payments: true,
+      },
+      orderBy: { dispatchedAt: "asc" },
+      take: 20,
+    });
+
+    const dispatchedCustomers = dispatchedInvoices.map((inv) => {
+      const totalPaid = inv.payments.reduce((s, p) => s + p.amountPaisa, 0);
+      const qty = inv.order?.lines.reduce((s, l) => s + l.qty, 0) ?? 0;
+      return {
+        invoiceNumber: inv.invoiceNumber,
+        dispatchDate: inv.dispatchedAt?.toISOString().slice(0, 10) ?? "",
+        customerName: inv.order?.customer.name ?? "—",
+        stateCode: inv.order?.customer.stateCode ?? "—",
+        qty,
+        totalPaisa: inv.totalPaisa,
+        paidPaisa: totalPaid,
+        outstandingPaisa: Math.max(0, inv.totalPaisa - totalPaid),
+        invoiceStatus: inv.status,
+      };
+    });
+
+    res.json({
+      runId: run.id,
+      traceGeneratedAt: new Date().toISOString(),
+      rawMaterialPurchases,
+      batch,
+      dispatchedCustomers,
+    });
+  }
+);

@@ -15,7 +15,7 @@ export function Layout({ user, onLogout, title, rightSlot, children }: LayoutPro
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="text-xl font-bold text-brand-700">CrispLedger</span>
+            <span className="text-xl font-bold text-brand-700">SnackFlow ERP</span>
             <span className="hidden sm:inline-block text-gray-300">|</span>
             <span className="hidden sm:inline-block text-sm font-medium text-gray-700">{title}</span>
           </div>

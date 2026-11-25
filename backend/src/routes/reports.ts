@@ -86,7 +86,7 @@ async function sendFormattedReport(
       res.send(Buffer.concat(chunks));
     });
 
-    doc.fontSize(15).text(`CrispLedger ERP — ${options.title}`, { align: "left" });
+    doc.fontSize(15).text(`SnackFlow ERP — ${options.title}`, { align: "left" });
     doc.fontSize(9).text(`Generated: ${new Date().toISOString()}`);
     doc.moveDown(0.8);
 

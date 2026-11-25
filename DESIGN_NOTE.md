@@ -1,4 +1,4 @@
-# CrispLedger — Architecture & Design Note
+# SnackFlow ERP — Architecture & Design Note
 
 ## 1. Data Model & ER Diagram
 
@@ -22,7 +22,7 @@ erDiagram
 
 ## 2. Two-Tier BOM & Live Extensibility
 
-Food manufacturers produce a single bulk dough/mix in large batches and pack it into multiple retail SKU weights. CrispLedger separates manufacturing into two tiers:
+Food manufacturers produce a single bulk dough/mix in large batches and pack it into multiple retail SKU weights. SnackFlow ERP separates manufacturing into two tiers:
 
 - **Tier 1 — Base Recipe (`Recipe` + `RecipeLine`):** Defines the bulk mix (`Murukku Bulk Mix`, `batchYieldG = 40000g`) in terms of raw materials (`40 kg Flour`, `10 L Oil`, `1.2 kg Spice Mix`).
 - **Tier 2 — Finished SKU (`Item`):** Links `recipeId` to a specific pack weight (`packWeightG = 200`), pouch (`pouchItemId`), and carton (`cartonItemId`, `packetsPerCarton = 20`).
@@ -43,7 +43,7 @@ Expected batch output is derived dynamically as `(batches * recipe.batchYieldG) 
 
 ## 4. Costing & Valuation Method
 
-CrispLedger uses **Moving Weighted Average Cost (WAC)** for raw materials and packaging, combined with **Direct Run Overhead Allocation** for finished goods:
+SnackFlow ERP uses **Moving Weighted Average Cost (WAC)** for raw materials and packaging, combined with **Direct Run Overhead Allocation** for finished goods:
 
 1. **Moving WAC (`getCurrentWAC`):** Replays `StockLedger` chronologically. On each receipt (`qtyDelta > 0`), `newWAC = (prevQty * prevWAC + qtyDelta * unitCostPaisa) / (prevQty + qtyDelta)` rounded to 4 decimal places.
    - *Benchmark Flour Example:* Opening `100 kg @ 4200 paisa` (`420,000`) + Purchase `60 kg @ 4500 paisa` (`270,000`) = `690,000 / 160 kg = 4312.5000 paisa/kg` (`₹43.125/kg`).
