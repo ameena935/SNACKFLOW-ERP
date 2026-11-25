@@ -14,5 +14,8 @@
     "db:migrate": "npm run prisma:migrate --workspace=backend",
     "db:seed": "npm run prisma:seed --workspace=backend",
     "db:reset": "npm run prisma:reset --workspace=backend"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }
